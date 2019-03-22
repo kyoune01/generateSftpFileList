@@ -3,3 +3,6 @@ __pycache__/*
 build/*
 dist/*
 *.spec
+
+log.txt
+res.csv
