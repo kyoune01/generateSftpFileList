@@ -1,0 +1,5 @@
+# ignore file to generate for pyinstaller
+__pycache__/*
+build/*
+dist/*
+*.spec
