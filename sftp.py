@@ -4,31 +4,71 @@ import csv
 import traceback
 import re
 
+# import time
+import stat
+
 
 def iter(dirc, sftp, permission, owner):
     # 再帰関数
     print(dirc)
     lists = [[dirc, permission, owner]]
     items = sftp.listdir_attr(dirc)
+
     if items == []:
         lists.append(["", "", ""])
         yield lists
+
     for rows in items:
-        # row -> [0]:permission, [1]:~, [2]:owner, [5]:month, [6]:day,
-        # [7]:year(or time), [8]:file name
-        row = rows.longname.split()
-        if rows.filename == '.' or rows.filename == '..':
+        # 名前
+        name = joinVoicedSound(rows.filename).encode(
+            'cp932').decode('shift_jis')
+        # ファイルパス
+        filePath = dirc + name
+        # ユーザーID
+        owner = str(rows.st_uid)
+        # 権限
+        permission = stat.filemode(rows.st_mode)
+        # 作成時間 time型
+        # time = time.gmtime(rows.st_mtime)
+
+        if name == '.' or name == '..':
             continue
-        lists.append([rows.filename, row[0], row[2]])
+
+        lists.append([name, permission, owner])
+
     yield lists
+
     for rows in items:
-        row = rows.longname.split()
-        f = dirc + rows.filename
-        if 'd' in row[0]:
-            yield from iter(f + '/', sftp, row[0], row[2])
+        # 名前
+        name = joinVoicedSound(rows.filename).encode(
+            'cp932').decode('shift_jis')
+        # ファイルパス
+        filePath = dirc + name
+        # ユーザーID
+        owner = str(rows.st_uid)
+        # 権限
+        permission = stat.filemode(rows.st_mode)
+        # 作成時間 time型
+        # time = time.gmtime(rows.st_mtime)
+
+        if 'd' in permission:
+            yield from iter(filePath + '/', sftp, permission, owner)
 
 
-def convPermission(strPermission):
+def joinVoicedSound(text='') -> str:
+    if text == '':
+        return ''
+
+    repdict = dict()
+    for tap in [(chr(ord(c)) + '\u3099', chr(ord(c) + 1)) for c in u'かきくけこさしすせそたちつてとはひふへほカキクケコサシスセソタチツテトハヒフヘホ']:
+        repdict.update({tap[0]: tap[1]})
+    for key in repdict.keys():
+        text = text.replace(key, repdict.get(key))
+
+    return text
+
+
+def convPermission(strPermission: str) -> str:
     """
       parse permisson text and return calculation result
 
@@ -46,7 +86,7 @@ def convPermission(strPermission):
     )
 
 
-def readConfigFile(path):
+def readConfigFile(path: str) -> list:
     """
         open file and return file content
 
@@ -55,10 +95,10 @@ def readConfigFile(path):
 
         Returns:
             text (array): opened file content
-            [0] (str): ip address or domain to hope conect
+            [0] (str): ip-address or domain-name to conect
             [1] (str): user name to server
             [2] (str): user passwd to server
-            [3] (str): dir path to search start path
+            [3] (str): dirctry-path to search start
 
         Raise:
             ValueError: not enough factor four to 'text'
@@ -128,7 +168,7 @@ def closeSFTPSever(sftp, ssh):
 
 def main():
     lists = []
-    path = 'list.txt'
+    path = './list.txt'
 
     # open config file
     # try: sftp connect
@@ -136,16 +176,19 @@ def main():
         text = readConfigFile(path)
         print(text[0], text[1], text[2])
         sftp, ssh = connectSFTPSever(text[0], text[1], text[2])
-    except Exception as ex:
+    except Exception:
         traceback.print_exc()
-        # input()
         exit()
 
     try:
+        # items = (sftp.listdir_attr(text[3]))
+        # for rows in items:
+        #     pass
+        #     print(vars(rows))
         # 再帰的にファイルパス取得
         for resLists in iter(text[3], sftp, "", ""):
             lists.append(resLists)
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         print("input key and end sftp.exe")
         # input()
@@ -175,11 +218,6 @@ def main():
             count = 0
             # dir編
             dirline = [[urls[0][0], convPermission(urls[0][1]), urls[0][2]]]
-
-            # count of file to dir
-            items = sorted(urls[1:])
-            dirline[-1].append(str(len(items)))
-
             dirPath = urls[0][0]
             dirPathList = dirPath.strip().split("/")
             for col in dirPathList:
@@ -190,27 +228,24 @@ def main():
                     dirline[-1].append(col)
 
             # file編
-            # itemline = []
-            # items = sorted(urls[1:])
-            # for item in items:
-            #     if item == ["", "", ""] or "d" in item[1]:
-            #         continue
-            #     filename = item[0]
-            #     # text encode convert
-            #     filename_sjis = filename.encode(
-            #         "cp932").decode('shift_jis')
-            #     dirPath_sjis = dirPath.encode("cp932").decode('shift_jis')
-            #     permission = convPermission(item[1])
-            #     owner = item[2]
-            #     itemline.append([])
-            #     itemline[-1].append(dirPath_sjis + filename_sjis)
-            #     itemline[-1].append(permission)
-            #     itemline[-1].append(owner)
-            #     for num in range(count):
-            #         itemline[-1].append("")
-            #     itemline[-1].append(filename_sjis)
+            itemline = []
+            items = sorted(urls[1:])
+            for item in items:
+                if item == ["", "", ""] or "d" in item[1]:
+                    continue
+                filename = item[0]
+                permission = convPermission(item[1])
+                owner = item[2]
+                itemline.append([])
+                itemline[-1].append(dirPath + filename)
+                itemline[-1].append(permission)
+                itemline[-1].append(owner)
+                for num in range(count):
+                    itemline[-1].append("")
+                itemline[-1].append(filename)
 
-            # dirline.extend(itemline)
+            # ここをコメントアウトでディレクトリ一覧出力に切り替え
+            dirline.extend(itemline)
 
             # write csv
             try:
