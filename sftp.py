@@ -15,7 +15,7 @@ def iter(dirc, sftp, permission, owner):
     items = sftp.listdir_attr(dirc)
 
     if items == []:
-        lists.append(["", "", ""])
+        lists.append(['', '', ''])
         yield lists
 
     for rows in items:
@@ -34,25 +34,12 @@ def iter(dirc, sftp, permission, owner):
         if name == '.' or name == '..':
             continue
 
+        if 'd' in permission:
+            yield from iter(filePath + '/', sftp, permission, owner)
+
         lists.append([name, permission, owner])
 
     yield lists
-
-    for rows in items:
-        # 名前
-        name = joinVoicedSound(rows.filename).encode(
-            'cp932').decode('shift_jis')
-        # ファイルパス
-        filePath = dirc + name
-        # ユーザーID
-        owner = str(rows.st_uid)
-        # 権限
-        permission = stat.filemode(rows.st_mode)
-        # 作成時間 time型
-        # time = time.gmtime(rows.st_mtime)
-
-        if 'd' in permission:
-            yield from iter(filePath + '/', sftp, permission, owner)
 
 
 def joinVoicedSound(text='') -> str:
@@ -80,9 +67,9 @@ def convPermission(strPermission: str) -> str:
     """
     s = re.sub(r'-', '0', re.sub(r'[^-]', '1', strPermission[1:]))
     return (
-        str(int("0b" + s[:3], 0)) +
-        str(int("0b" + s[3:6], 0)) +
-        str(int("0b" + s[6:], 0))
+        str(int('0b' + s[:3], 0)) +
+        str(int('0b' + s[3:6], 0)) +
+        str(int('0b' + s[6:], 0))
     )
 
 
@@ -104,7 +91,7 @@ def readConfigFile(path: str) -> list:
             ValueError: not enough factor four to 'text'
     """
     try:
-        with open(path, "rb") as f:
+        with open(path, 'rb') as f:
             items = f.read()
         text = items.decode('utf-8').split()
     except Exception as e:
@@ -174,64 +161,80 @@ def main():
     # try: sftp connect
     try:
         text = readConfigFile(path)
-        print(text[0], text[1], text[2])
-        sftp, ssh = connectSFTPSever(text[0], text[1], text[2])
     except Exception:
         traceback.print_exc()
         exit()
 
     try:
-        # items = (sftp.listdir_attr(text[3]))
-        # for rows in items:
-        #     pass
-        #     print(vars(rows))
+        domain = text[0]
+        user = text[1]
+        passwd = text[2]
+        startPath = text[3]
+        print(domain, user, passwd)
+    except Exception:
+        pass
+
+    try:
+        sftp, ssh = connectSFTPSever(domain, user, passwd)
+    except Exception:
+        traceback.print_exc()
+        exit()
+
+    try:
         # 再帰的にファイルパス取得
-        for resLists in iter(text[3], sftp, "", ""):
+        for resLists in iter(startPath, sftp, '', ''):
             lists.append(resLists)
     except Exception:
         traceback.print_exc()
-        print("input key and end sftp.exe")
-        # input()
+        print('input key and end sftp.exe')
         exit()
     except KeyboardInterrupt:
-        print("get signal to Ctrl-c")
+        # pythonでの実行時のみ動作確認
+        # pyinstallerでexe化した場合は動作せず
+        print('get signal to Ctrl-c')
     finally:
         closeSFTPSever(sftp, ssh)
-        print("\nPlease waiting to write csv for result ...\n")
+        print('\nPlease waiting to write csv for result ...\n')
 
     # sort to flag is dirPath
     try:
         lists = sorted(lists)
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
-        print("input key and end sftp.exe")
-        # input()
+        print('input key and end sftp.exe')
         exit()
 
     try:
         f = open('res.csv', 'w', newline='')
         writer = csv.writer(f)
+
+        # 初期ディレクトリを記載
+        dirList = startPath.strip().split('/')
+        dirline = ['', '', '']
+        dirline.extend(dirList)
+        writer.writerows([dirline])
+
         for urls in lists:
             # csv 書き込み準備
-            if urls[0][1] == "":
+            if urls[0][1] == '':
                 continue
             count = 0
             # dir編
             dirline = [[urls[0][0], convPermission(urls[0][1]), urls[0][2]]]
             dirPath = urls[0][0]
-            dirPathList = dirPath.strip().split("/")
+            dirPathList = dirPath.strip().split('/')
             for col in dirPathList:
-                if col != None and col != dirPathList[-2]:
-                    dirline[-1].append("")
+                if col is not None and col != dirPathList[-2]:
+                    dirline[-1].append('')
                     count += 1
-                elif col != None:
+                elif col is not None:
                     dirline[-1].append(col)
 
             # file編
             itemline = []
             items = sorted(urls[1:])
             for item in items:
-                if item == ["", "", ""] or "d" in item[1]:
+                if item == ['', '', ''] or 'd' in item[1]:
                     continue
                 filename = item[0]
                 permission = convPermission(item[1])
@@ -241,7 +244,7 @@ def main():
                 itemline[-1].append(permission)
                 itemline[-1].append(owner)
                 for num in range(count):
-                    itemline[-1].append("")
+                    itemline[-1].append('')
                 itemline[-1].append(filename)
 
             # ここをコメントアウトでディレクトリ一覧出力に切り替え
@@ -250,27 +253,28 @@ def main():
             # write csv
             try:
                 writer.writerows(dirline)
-            except Exception as ex:
+            except Exception:
                 traceback.print_exc()
-                print("input key and end sftp.exe")
-                # input()
+                print('input key and end sftp.exe')
+
             with open('log.txt', 'a', encoding='utf-8') as log:
-                res = ""
+                res = ''
                 for item in dirline:
-                    res += ",".join(item) + "\n"
+                    res += ','.join(item) + '\n'
                 log.write(res)
-        print("sucusess")
-    except Exception as e:
+
+        print('sucusess')
+    except Exception:
         traceback.print_exc()
-        print("sys finishing ...")
+        print('sys finishing ...')
     except KeyboardInterrupt:
-        print("get signal to Ctrl-c")
-        print("sys finishing ...")
+        print('get signal to Ctrl-c')
+        print('sys finishing ...')
     finally:
         f.close()
-    print("sys exit")
-    print("input key and end sftp.exe")
-    # input()
+
+    print('sys exit')
+    print('input key and end sftp.exe')
 
 
 if __name__ == '__main__':
